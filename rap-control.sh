@@ -11,8 +11,12 @@ RAP_TOPIC="${RAP_TOPIC:-rupert.audio.control}"
 RUPERT_CONFIG_PATH="${RUPERT_CONFIG_PATH:-${APP_DIR}/cfg/rupert_config.json}"
 RUPERT_PROSUMER_PATH="${RUPERT_PROSUMER_PATH:-}"
 
-# Used by status/stop to discover the RAP process.
-PROCESS_MATCH="${PROCESS_MATCH:-${RAP_SCRIPT} ${RAP_TOPIC}}"
+regex_escape() {
+	printf '%s' "$1" | sed 's/[][\\.^$*+?{}|()]/\\&/g'
+}
+
+# Status and stop use the exact foreground command, not a configurable regex.
+PROCESS_PATTERN="^$(regex_escape "${PYTHON_BIN}")[[:space:]]+$(regex_escape "${RAP_SCRIPT}")[[:space:]]+$(regex_escape "${RAP_TOPIC}")$"
 
 usage() {
 	echo "Usage: $0 {start|stop|restart|status}"
@@ -46,18 +50,18 @@ start_service() {
 }
 
 stop_service() {
-	if pgrep -f "${PROCESS_MATCH}" >/dev/null 2>&1; then
-		pkill -TERM -f "${PROCESS_MATCH}"
-		echo "Stopped RAP process matching: ${PROCESS_MATCH}"
+	if pgrep -f "${PROCESS_PATTERN}" >/dev/null 2>&1; then
+		pkill -TERM -f "${PROCESS_PATTERN}"
+		echo "Stopped RAP process"
 	else
 		echo "RAP is not running"
 	fi
 }
 
 status_service() {
-	if pgrep -fa "${PROCESS_MATCH}" >/dev/null 2>&1; then
+	if pgrep -fa "${PROCESS_PATTERN}" >/dev/null 2>&1; then
 		echo "RAP is running"
-		pgrep -fa "${PROCESS_MATCH}"
+		pgrep -fa "${PROCESS_PATTERN}"
 	else
 		echo "RAP is not running"
 		exit 3

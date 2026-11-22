@@ -16,4 +16,7 @@ if __name__ == '__main__': # Required to support multiprocessing in the prosumer
 		sys.exit(1)
 	topic = sys.argv[1]
 	audio_consumer = RupertAudioProsumer(config_path)
-	audio_consumer.listen(topic)
+	try:
+		audio_consumer.listen(topic)
+	finally:
+		audio_consumer.rap.bye()

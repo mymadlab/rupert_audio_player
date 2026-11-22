@@ -1,7 +1,10 @@
-# pylint: disable=missing-module-docstring,missing-function-docstring
+# pylint: disable=missing-module-docstring,missing-function-docstring,too-many-statements
+# pylint: disable=not-callable,import-error,duplicate-code
 
-from pathlib import Path
+import tempfile
 import time
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from behave import given, then, when
 from rupert_audio_player import RupertAudioPlayer
@@ -17,7 +20,9 @@ def _track_paths() -> list[str]:
 
 
 def _setup_player(context):
-	context.audio_player = RupertAudioPlayer(options="--no-video")
+	context.audio_player = RupertAudioPlayer(
+		options="--no-video", media_policy={"allowed_media_roots": [str(TRACKS_DIR)]}
+	)
 	context.playlist_paths = _track_paths()
 
 
@@ -65,7 +70,9 @@ def step_then_playlist_should_play_in_order(context):
 	status = _wait_for_track_index(context, 0)
 	assert status["track"] is not None
 	assert status["track_index"] == 0
-	assert _track_names_from_mrls(status["media_list"]) == [Path(p).name for p in context.playlist_paths]
+	assert _track_names_from_mrls(status["media_list"]) == [
+		Path(path).name for path in context.playlist_paths
+	]
 	_cleanup(context)
 
 
@@ -159,6 +166,83 @@ def step_then_directory_audio_files_added_and_playing(context):
 	status = _wait_for_track_index(context, 0)
 	assert status["track"] is not None
 	assert status["track_index"] == 0
-	assert _track_names_from_mrls(status["media_list"]) == [Path(p).name for p in context.playlist_paths]
+	assert _track_names_from_mrls(status["media_list"]) == [
+		Path(path).name for path in context.playlist_paths
+	]
 	_cleanup(context)
 
+
+def _release_test_player(policy=None):
+	instance = MagicMock()
+	instance.media_list_new.return_value.add_media.return_value = 0
+	media_player = instance.media_list_player_new.return_value.get_media_player.return_value
+	media_player.audio_set_volume.return_value = 0
+	with patch('rupert_audio_player.vlc.Instance', return_value=instance):
+		player = RupertAudioPlayer(log=MagicMock(), media_policy=policy)
+	return player, instance
+
+
+@then("VLC resources are released including on partial initialization")
+def release_resources(_context):
+	with tempfile.TemporaryDirectory() as directory:
+		track = Path(directory) / 'track.mp3'
+		track.touch()
+		player, instance = _release_test_player({'allowed_media_roots': [directory]})
+		lists = [MagicMock(), MagicMock()]
+		for media_list in lists:
+			media_list.add_media.return_value = 0
+		players = [MagicMock(), MagicMock()]
+		media = [MagicMock(), MagicMock()]
+		instance.media_list_new.side_effect = lists
+		instance.media_list_player_new.side_effect = players
+		instance.media_new.side_effect = media
+		player.set({'play_track': str(track)})
+		player.set({'play_track': str(track)})
+		players[0].stop.assert_called_once()
+		players[0].release.assert_called_once()
+		lists[0].release.assert_called_once()
+		media[0].release.assert_called_once()
+		player.bye()
+		player.bye()
+		players[1].release.assert_called_once()
+		lists[1].release.assert_called_once()
+		media[1].release.assert_called_once()
+		instance.release.assert_called_once()
+
+		player, instance = _release_test_player({'allowed_media_roots': [directory]})
+		instance.media_list_player_new.side_effect = RuntimeError('creation failed')
+		try:
+			player.set({'play_track': str(track)})
+		except RuntimeError:
+			pass
+		else:
+			raise AssertionError('Expected initialization failure')
+		instance.media_list_new.return_value.release.assert_called_once()
+		player.bye()
+		instance.release.assert_called_once()
+
+		player, instance = _release_test_player({'allowed_media_roots': [directory]})
+		instance.media_list_new.return_value.add_media.return_value = -1
+		try:
+			player.set({'play_track': str(track)})
+		except RuntimeError:
+			pass
+		else:
+			raise AssertionError('Expected add-media failure')
+		instance.media_new.return_value.release.assert_called_once()
+		instance.media_list_new.return_value.release.assert_called_once()
+		instance.media_list_player_new.return_value.release.assert_called_once()
+		player.bye()
+
+		player, instance = _release_test_player({'allowed_media_roots': [directory]})
+		player.set({'play_track': str(track)})
+		instance.media_list_player_new.return_value.stop.side_effect = RuntimeError('stop failed')
+		try:
+			player.bye()
+		except ExceptionGroup as error:
+			assert 'stop failed' in str(error.exceptions[0])
+		else:
+			raise AssertionError('Expected cleanup failure')
+		instance.media_list_new.return_value.release.assert_called_once()
+		instance.media_new.return_value.release.assert_called_once()
+		instance.release.assert_called_once()
