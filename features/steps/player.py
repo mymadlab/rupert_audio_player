@@ -593,6 +593,15 @@ def fresh_player_controls(_context):
 	player.bye()
 
 
+@then("the audio player receives the prosumer listener logger")
+def listener_logger_is_reused(_context):
+	client = RupertAudioProsumer.__new__(RupertAudioProsumer)
+	client.logger = MagicMock()
+	client.rap = MagicMock()
+	client._configure_listener_logger('source')
+	client.rap.set_logger.assert_called_once_with(client.logger)
+
+
 @then("status events are not silently accepted")
 def status_events(_context):
 	client = RupertAudioProsumer.__new__(RupertAudioProsumer)

@@ -21,7 +21,16 @@ class RupertAudioProsumer(RupertProsumer):
 	@beartype
 	def __init__(self, config_file: str) -> None:
 		super().__init__(config_file=config_file)
-		self.rap = RupertAudioPlayer(options="", log=logger, media_policy=self.config.get('audio', {}))
+		self.rap = RupertAudioPlayer(
+			options="",
+			log=self.logger,
+			media_policy=self.config.get('audio', {}),
+		)
+
+	def _configure_listener_logger(self, topic: str) -> None:
+		"""Use the consumer's configured logger for subsequent VLC player operations."""
+		del topic
+		self.rap.set_logger(self.logger)
 
 	@beartype
 	def process_event(self, consumer_message: object) -> None:
@@ -88,6 +97,11 @@ class RupertAudioPlayer():  # pylint: disable=too-many-instance-attributes
 		self.media = None
 		self.control_dict = None
 		self.eos = None
+
+	@beartype
+	def set_logger(self, log: object) -> None:
+		"""Replace the logger used by VLC playback operations."""
+		self.logger = log
 
 	@beartype
 	def status(self) -> dict[str, str | int | bool | list[str] | None]:

@@ -32,3 +32,6 @@ Feature: Audio consumer failure handling
 
 	Scenario: Single tracks and combined playback and volume controls work
 		Then single-track and combined audio controls are applied
+
+	Scenario: Listener logger is reused by the audio player
+		Then the audio player receives the prosumer listener logger
